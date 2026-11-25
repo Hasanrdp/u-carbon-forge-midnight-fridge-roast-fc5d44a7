@@ -22,29 +22,49 @@ EXPECTED_SHA256 = "6dfdc5c3cc845c27ea6985e815da477a8e16b01cf69d43846ab784344eedf
 EXPECTED_BYTES = 101
 
 
+def verify(path, data):
+    """Read the file back and check it byte-for-byte against the pinned line.
+
+    Returns True only when every check passes; returns False (never raises)
+    on any mismatch so the caller can decide the exit code.
+    """
+    try:
+        with open(path, "rb") as handle:
+            written = handle.read()
+    except OSError:
+        return False
+    if written != data:
+        return False
+    if len(written) != EXPECTED_BYTES:
+        return False
+    if hashlib.sha256(written).hexdigest() != EXPECTED_SHA256:
+        return False
+    return True
+
+
 def main():
     out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR") or "/output"
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "entry.txt")
     data = LINE.encode("utf-8")
     if len(data) != EXPECTED_BYTES:
-        sys.exit("line is %d bytes, expected %d" % (len(data), EXPECTED_BYTES))
+        print("line is %d bytes, expected %d" % (len(data), EXPECTED_BYTES), file=sys.stderr)
+        return 1
     if hashlib.sha256(data).hexdigest() != EXPECTED_SHA256:
-        sys.exit("line sha256 does not match the pinned value")
+        print("line sha256 does not match the pinned value", file=sys.stderr)
+        return 1
     with open(path, "wb") as handle:
         handle.write(data)
-    with open(path, "rb") as handle:
-        written = handle.read()
-    if written != data:
-        sys.exit("entry.txt bytes differ from the pinned line")
-    if len(written) != EXPECTED_BYTES:
-        sys.exit("entry.txt is %d bytes, expected %d" % (len(written), EXPECTED_BYTES))
-    if hashlib.sha256(written).hexdigest() != EXPECTED_SHA256:
-        sys.exit("entry.txt sha256 does not match the pinned value")
+    verified = verify(path, data)
+    if not verified:
+        print("entry.txt failed the read-back verification", file=sys.stderr)
+        return 1
     if not (1 <= len(LINE) <= 200) or not LINE.strip():
-        sys.exit("line fails the 1-200 character gate")
-    print("wrote %s (%d bytes, %d chars)" % (path, len(written), len(LINE)))
+        print("line fails the 1-200 character gate", file=sys.stderr)
+        return 1
+    print("wrote %s (%d bytes, %d chars)" % (path, len(data), len(LINE)))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
